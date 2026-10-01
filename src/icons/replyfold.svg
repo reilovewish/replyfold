@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Replyfold のアイコン：白い封筒＋赤のフタの線と頭文字 R、左下に返信の矢印 -->
+  <!-- 封筒 -->
+  <rect x="18" y="24" width="102" height="78" rx="1.5" fill="#ffffff" stroke="#e0463a" stroke-width="7"/>
+  <path d="M20 28 L69 66 L118 28" fill="none" stroke="#e0463a" stroke-width="7" stroke-linecap="butt" stroke-linejoin="miter"/>
+  <!-- 頭文字 R：Inter Bold（SIL Open Font License 1.1, Copyright 2016 The Inter Project Authors）の字形を輪郭化 -->
+  <path transform="translate(84 94) scale(0.0161 -0.0161) translate(-135 0)" fill="#c5221f" d="M135 0V1490H716Q886 1490 1005.0 1430.0Q1124 1370 1186.5 1261.0Q1249 1152 1249.0 1005.0Q1249 858 1185.5 751.5Q1122 645 1002 589Q993 585 985 581L1302 0H964L679 532H440V0ZM440 779H660Q754 779 814.0 804.5Q874 830 904.0 880.5Q934 931 934 1005Q934 1081 904.0 1132.5Q874 1184 813.5 1211.0Q753 1238 659 1238H440Z"/>
+  <!-- 返信の矢印（白い縁で封筒の線を切り、上に被せる） -->
+  <path d="M6 92 L36 66 V82 H62 V102 H36 V118 Z" fill="#3a3a40" stroke="#ffffff" stroke-width="7" stroke-linejoin="miter" paint-order="stroke"/>
+</svg>

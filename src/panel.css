@@ -1,0 +1,44 @@
+/*
+ * replyfold パネル：表示中メールの文書側に効かせる分だけを書く。
+ * パネル内部の見た目は Shadow DOM の中（panel.js の STYLE）にあり、ここには書かない。
+ * ここで扱うのは ①ホスト要素の位置と高さ ②メール本文の下余白 の2つ。
+ * クラスは panel.js がメール情報を取得できたときだけ付けるので、それまでは何も変わらない。
+ */
+
+/* ① ホスト要素：画面下端に固定。メール側のスタイルを受けないよう初期化してから指定する */
+#replyfold-host {
+  all: initial;
+  display: block !important;
+  position: fixed !important;
+  left: 16px !important;
+  right: 16px !important;
+  bottom: 0 !important;
+  height: 40px !important;
+  max-height: calc(100vh - 8px) !important;
+  /* 影をホストの外（上側）へ出すため切り取らない。中身の切り取りは Shadow DOM 内の .wrap が行う */
+  overflow: visible !important;
+  z-index: 2147483647 !important;
+  transition: height 0.18s ease;
+}
+
+/* 展開時：表示高さの約45%。上端をドラッグして変えた高さは panel.js が --replyfold-h に入れる */
+#replyfold-host.replyfold-open {
+  height: var(--replyfold-h, 45vh) !important;
+  min-height: 220px !important;
+}
+
+/* ドラッグ中は高さのアニメーションを止める（指の動きに遅れないように） */
+#replyfold-host.replyfold-drag {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #replyfold-host {
+    transition: none;
+  }
+}
+
+/* ② 本文がパネルに隠れないよう、下に余白を足す（値は panel.js が状態に合わせて更新） */
+html.replyfold-on body {
+  padding-bottom: var(--replyfold-pad, 48px) !important;
+}

@@ -1,0 +1,25 @@
+# このリポジトリは公開。内部向けの作業文書・設定はコミットしない
+CLAUDE.md
+HANDOFF.md
+.claude/
+doc/private/
+docs/private/
+
+# 認証情報・環境依存
+.env
+.env.*
+*.pem
+*.key
+
+# ビルド成果物・依存
+node_modules/
+web-ext-artifacts/
+dist/
+*.xpi
+*.zip
+
+# OS・エディタ
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
