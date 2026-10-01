@@ -1,9 +1,8 @@
-# このリポジトリは公開。内部向けの作業文書・設定はコミットしない
+# このリポジトリは公開。内部向けの文書は private/（別の非公開リポジトリ）に置く
+private/
+# 直下の CLAUDE.md は private/CLAUDE.md を読み込む1行だけ
 CLAUDE.md
-HANDOFF.md
 .claude/
-doc/private/
-docs/private/
 
 # 認証情報・環境依存
 .env
