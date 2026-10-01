@@ -8,7 +8,7 @@ Thunderbird は返信のたびに別ウインドウが開きます。Replyfold �
 
 *An unofficial Thunderbird extension for writing replies in a panel at the bottom of the message pane. Noncommercial use only; no modification or redistribution. See the [English summary](#english-summary).*
 
-![メール表示エリアの下端に返信パネルを開いた画面](doc/images/replyfold-expanded.png)
+![返信パネルがせり上がり、返信を書いて送信するまでの動き](doc/images/replyfold-demo.gif)
 
 ## 状態
 
@@ -24,21 +24,22 @@ Thunderbird は返信のたびに別ウインドウが開きます。Replyfold �
 - **別ウインドウとの行き来**：パネルから標準の作成ウインドウへ、作成ウインドウからパネルへ
 - `Ctrl+Enter` で送信
 
-| 折りたたみ | 設定 |
+| 展開 | 設定 |
 |---|---|
-| ![折りたたんだ返信パネル](doc/images/replyfold-collapsed.png) | ![歯車から開く設定](doc/images/replyfold-settings.png) |
+| ![メール表示エリアの下端に返信パネルを開いた画面](doc/images/replyfold-expanded.png) | ![歯車から開く設定](doc/images/replyfold-settings.png) |
 
 画面イメージの文言はすべて架空のサンプルです。
 
 ## 導入
 
-公式アドオンサイトには公開していないため、インストール用ファイル（`.xpi`）を作って導入します。導入後は Thunderbird を再起動しても外れません。
+公式アドオンサイトには公開していないため、インストール用ファイル（`.xpi`）から導入します。導入後は Thunderbird を再起動しても外れません。
 
-1. このリポジトリを取得する
-2. インストール用ファイルを作る。Windows なら PowerShell で、取得したフォルダーの直下から `./scripts/build-xpi.ps1` を実行する。`dist/replyfold-<バージョン>.xpi` ができる（他の環境では、`src` フォルダーの**中身**を zip に固め、拡張子を `.xpi` に変える）
-3. Thunderbird の「アドオンとテーマ」→ 歯車 →「ファイルからアドオンをインストール...」で、作った `.xpi` を選ぶ
-4. 権限の確認が出たら「追加」を押す
-5. メールを選び直すと、表示エリアの下端に「返信を書く」のバーが出る
+1. [Releases](https://github.com/reilovewish/replyfold/releases/latest) から `replyfold-<バージョン>.xpi` をダウンロードする
+2. Thunderbird の「アドオンとテーマ」→ 歯車 →「ファイルからアドオンをインストール...」で、ダウンロードした `.xpi` を選ぶ
+3. 権限の確認が出たら「追加」を押す
+4. メールを選び直すと、表示エリアの下端に「返信を書く」のバーが出る
+
+ソースから作る場合は、Windows の PowerShell で、取得したフォルダーの直下から `./scripts/build-xpi.ps1` を実行すると `dist/` に `.xpi` ができます（他の環境では、`src` フォルダーの**中身**を zip に固め、拡張子を `.xpi` に変える）。
 
 更新するときは、新しい版で同じ手順を繰り返すと上書きされます。下書きと設定は引き継がれます。
 
@@ -143,7 +144,7 @@ Replyfold is an unofficial Thunderbird extension that lets you write replies in 
 
 - **Status**: Early prototype. Tested only on Thunderbird 156 (Release channel). Not listed on addons.thunderbird.net. The UI is Japanese only.
 - **How it works**: Uses only the official MailExtension APIs. When you send, a standard compose window is opened minimized and used in the background. No data is sent anywhere except through Thunderbird's own sending.
-- **Install**: Build the `.xpi` with `scripts/build-xpi.ps1` (or zip the contents of `src/`), then use "Install Add-on From File..." in the Add-ons Manager.
+- **Install**: Download the `.xpi` from [Releases](https://github.com/reilovewish/replyfold/releases/latest), then use "Install Add-on From File..." in the Add-ons Manager.
 - **License**: [PolyForm Strict License 1.0.0](LICENSE.md). **Noncommercial use only. Modification and redistribution are not permitted.**
 - **Disclaimer**: Provided "as is", without warranty of any kind. To the maximum extent permitted by law, the author is not liable for any damages, including misdirected or failed emails and lost drafts. Always check the recipients before sending.
 - **Trademarks**: Thunderbird is a trademark of the Mozilla Foundation. Gmail is a trademark of Google LLC. This project is not affiliated with, endorsed by, or sponsored by either.
