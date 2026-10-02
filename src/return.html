@@ -1,0 +1,35 @@
+<!doctype html>
+<!-- 作成ウインドウの「パネルに戻す」の小窓：書式や添付が失われるときだけ確認を出す -->
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>パネルに戻す</title>
+  <style>
+    :root { color-scheme: light dark; --fg: #18181b; --sub: #71717a; --line: #d4d4d8;
+            --accent: #1373d9; --accent-fg: #fff; --err: #c5221f; --bg: #fff; }
+    @media (prefers-color-scheme: dark) {
+      :root { --fg: #e6e8eb; --sub: #a8adb4; --line: #474d57;
+              --accent: #6aa9f4; --accent-fg: #10233f; --err: #f28b82; --bg: #23272e; }
+    }
+    body { margin: 0; padding: 14px 16px; width: 320px; background: var(--bg); color: var(--fg);
+           font: 13px/1.6 "Segoe UI", "Yu Gothic UI", Meiryo, system-ui, sans-serif; }
+    p { margin: 0 0 8px; }
+    .sub { color: var(--sub); font-size: 12px; }
+    .err { color: var(--err); }
+    .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+    button { height: 30px; padding: 0 16px; border-radius: 4px; font: inherit; cursor: pointer;
+             border: 1px solid var(--line); background: transparent; color: var(--fg); }
+    button.primary { border-color: var(--accent); background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <p id="message">確認しています…</p>
+  <div id="list"></div>
+  <div class="row" id="buttons" hidden>
+    <button type="button" id="cancel">やめる</button>
+    <button type="button" class="primary" id="ok">パネルに戻す</button>
+  </div>
+  <script src="return.js"></script>
+</body>
+</html>

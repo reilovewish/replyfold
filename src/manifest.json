@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Replyfold",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "返信を別ウインドウでなく、メール表示エリアの下端のパネルで書く",
   "icons": {
     "32": "icons/replyfold.svg",
@@ -20,15 +20,20 @@
   "compose_action": {
     "default_title": "パネルに戻す",
     "default_label": "パネルに戻す",
-    "default_icon": "icons/dock.svg"
+    "default_icon": "icons/dock.svg",
+    "default_popup": "return.html"
   },
   "permissions": [
     "accountsRead",
     "messagesRead",
     "messagesModify",
+    "messagesMove",
+    "messagesDelete",
     "scripting",
+    "alarms",
     "compose",
     "compose.send",
+    "compose.save",
     "storage"
   ]
 }

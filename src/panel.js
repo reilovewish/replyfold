@@ -141,6 +141,23 @@
     kbd { font: inherit; font-size: 11px; padding: 1px 5px; border-radius: 3px;
           border: 1px solid var(--line); border-bottom-width: 2px;
           background: var(--head); color: var(--fg); }
+    /* 設定の小窓：項目が増えたので、パネルに収まらない分はスクロール */
+    .pop { max-height: calc(100% - 66px); overflow: auto; }
+    .pop .row { display: grid; gap: 4px; font-size: 12px; }
+    .pop select { height: 26px; max-width: 340px; padding: 0 6px; font: inherit; font-size: 12px;
+                  border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--fg); }
+    /* 別の下書きへの差し替え確認 */
+    .notice { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
+              padding: 8px 16px; font-size: 12px; border-bottom: 1px solid var(--soft);
+              background: color-mix(in srgb, var(--accent) 9%, var(--bg)); }
+    .notice span { flex: 1 1 260px; min-width: 0; }
+    .notice button { flex: 0 0 auto; height: 26px; padding: 0 12px; border-radius: 4px; font: inherit;
+                     cursor: pointer; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+    .notice button.primary { border-color: var(--accent); background: var(--accent);
+                             color: var(--accent-fg); font-weight: 600; }
+    /* 添付・書式の注記 */
+    .info { flex: 0 0 auto; padding: 4px 16px; font-size: 11px; color: var(--sub);
+            border-bottom: 1px solid var(--soft); }
     @media (prefers-reduced-motion: reduce) { .sw i, .sw i::after { transition: none; } }
     [hidden] { display: none !important; }
   `;
@@ -172,7 +189,11 @@
     // 元メールの本文は、いま表示されている内容から取る（パネルを差し込む前に読む）
     const originalText = (document.body.innerText || "").replace(/\r\n?/g, "\n").trim();
 
-    const draftKey = `draft:${info.id}`;
+    // 下書きの保存キー。元メールの Message-ID 基準（背景スクリプトが決める）
+    const suffix = info.suffix || (info.headerMessageId ? `mid:${info.headerMessageId}` : `id:${info.id}`);
+    const draftKey = `draft:${suffix}`;
+    const linkKey = `link:${suffix}`; // 下書きフォルダーの下書きとの紐付け（背景スクリプトだけが書く）
+    let link = null;
     const defaults = info.defaults || {
       sender: { to: [info.author], cc: [] },
       all: { to: [info.author], cc: [] },
@@ -331,12 +352,19 @@
     // ---- 元メールの引用（歯車の設定） ----
     // すべての返信に共通。storage.local の "settings" に保存する
     // panelHeight は展開時の高さ（px）。null なら初期の高さ
+    // 下書きの項目の意味は background.js の DEFAULT_SETTINGS を参照（初期値もそちらと揃える）
     const settings = {
       includeOriginal: true,
       showInEditor: false,
       quoteMark: true,
       showBcc: false,
       panelHeight: null,
+      folderSave: true,
+      saveTiming: "leave",
+      intervalMin: 5,
+      replaceOld: "keep",
+      replaceFolder: "",
+      draftPlace: "mail",
     };
     function saveSettings() {
       api.storage.local.set({ settings: { ...settings } }).catch((e) => {
@@ -346,7 +374,8 @@
     const pop = el("div", "pop");
     pop.hidden = true;
     pop.append(el("div", "cap", "元メールの扱い"));
-    function option(key, labelText, onChange) {
+    // quote＝入力欄の引用に関わる設定か（関わらない設定で下書きを保存し直さないため）
+    function option(key, labelText, onChange, quote = true) {
       const label = el("label", "sw");
       const input = el("input");
       input.type = "checkbox";
@@ -356,11 +385,31 @@
         settings[key] = input.checked;
         if (onChange) onChange();
         renderSettings();
-        syncEditorQuote();
-        scheduleSave();
+        if (quote) {
+          syncEditorQuote();
+          scheduleSave();
+        }
         saveSettings();
       });
       return { label, input };
+    }
+    // プルダウンの設定。cast は保存する値の型（間隔は数値）
+    function choice(labelText, key, items, cast = String) {
+      const row = el("label", "row");
+      const select = el("select");
+      for (const [value, text] of items) {
+        const node = el("option", "", text);
+        node.value = value;
+        select.append(node);
+      }
+      row.append(document.createTextNode(labelText), select);
+      pop.append(row);
+      select.addEventListener("change", () => {
+        settings[key] = cast(select.value);
+        renderSettings();
+        saveSettings();
+      });
+      return { row, select };
     }
     const optInclude = option("includeOriginal", "元メールを返信の下に入れる");
     const optShow = option("showInEditor", "元メールを入力欄に表示して編集する");
@@ -370,9 +419,70 @@
       // オンにしたら、欄が見えるよう宛先の編集欄を開く
       if (settings.showBcc) fields.hidden = false;
     });
+    pop.append(el("div", "cap", "下書き"));
+    const optFolder = option("folderSave", "Thunderbird の下書きフォルダーにも保存する", null, false);
+    const selPlace = choice("保存先", "draftPlace", [
+      ["mail", "表示中のメールのアカウントの下書きフォルダー"],
+      ["sender", "差出人のアカウントの下書きフォルダー（Thunderbird 標準）"],
+    ]);
+    const selTiming = choice("下書きフォルダーへ保存するタイミング", "saveTiming", [
+      ["leave", "別のメールへ移る・パネルを畳むとき"],
+      ["minimize", "Thunderbird を最小化したとき"],
+      ["interval", "一定の間隔で"],
+    ]);
+    const selInterval = choice(
+      "間隔",
+      "intervalMin",
+      [2, 5, 10, 30, 60].map((n) => [String(n), `${n} 分ごと`]),
+      Number
+    );
+    const selReplace = choice("別の下書きに差し替えたときの古い下書き", "replaceOld", [
+      ["keep", "下書きフォルダーに残す"],
+      ["move", "指定したフォルダーへ移す"],
+    ]);
+    const selFolder = choice("移動先のフォルダー", "replaceFolder", [["", "その下書きのアカウントのごみ箱"]]);
+    // フォルダーの一覧は、移動先を選ぶときに初めて読む
+    let foldersLoaded = false;
+    async function loadFolders() {
+      if (foldersLoaded) return;
+      foldersLoaded = true;
+      let list = [];
+      try {
+        list = (await api.runtime.sendMessage({ type: "listFolders" })) || [];
+      } catch (e) {
+        console.warn(LOG, "フォルダーの一覧を取得できなかった", e);
+      }
+      for (const folder of list) {
+        const existing = [...selFolder.select.options].find((o) => o.value === folder.id);
+        if (existing) {
+          existing.textContent = folder.label; // 仮の項目を正しい名前に
+          continue;
+        }
+        const node = el("option", "", folder.label);
+        node.value = folder.id;
+        selFolder.select.append(node);
+      }
+      selFolder.select.value = settings.replaceFolder;
+    }
     pop.append(el("div", "sub", "すべての返信に共通の設定です"));
 
     function renderSettings() {
+      optFolder.input.checked = settings.folderSave;
+      selTiming.select.value = settings.saveTiming;
+      selInterval.select.value = String(settings.intervalMin);
+      selReplace.select.value = settings.replaceOld;
+      // 保存済みの移動先が一覧に未読込なら、仮の項目で値を保つ
+      if (settings.replaceFolder && ![...selFolder.select.options].some((o) => o.value === settings.replaceFolder)) {
+        const node = el("option", "", "（設定済みのフォルダー）");
+        node.value = settings.replaceFolder;
+        selFolder.select.append(node);
+      }
+      selFolder.select.value = settings.replaceFolder;
+      selPlace.select.value = settings.draftPlace;
+      selPlace.row.hidden = selTiming.row.hidden = selReplace.row.hidden = !settings.folderSave;
+      selInterval.row.hidden = !settings.folderSave || settings.saveTiming !== "interval";
+      selFolder.row.hidden = !settings.folderSave || settings.replaceOld !== "move";
+      if (!selFolder.row.hidden) loadFolders();
       optBcc.input.checked = settings.showBcc;
       bccLabel.hidden = bccInput.hidden = !settings.showBcc;
       render();
@@ -436,7 +546,33 @@
       gear.classList.remove("on");
     }
 
-    main.append(fields, textarea, foot, pop);
+    // 標準の作成ウインドウで書かれた別の下書きが見つかったときの確認
+    const notice = el("div", "notice");
+    notice.hidden = true;
+    const replaceBtn = el("button", "primary", "差し替える");
+    replaceBtn.type = "button";
+    const keepBtn = el("button", "", "今のままにする");
+    keepBtn.type = "button";
+    notice.append(
+      el("span", "", "このメールへの下書きがほかに1通あります。そちらを最新として差し替えますか？"),
+      replaceBtn,
+      keepBtn
+    );
+    // 作成ウインドウで編集中の表示（その間パネルは読み取り専用）
+    const lockBar = el("div", "notice");
+    lockBar.hidden = true;
+    const focusBtn = el("button", "primary", "ウインドウを表示");
+    focusBtn.type = "button";
+    lockBar.append(
+      el("span", "", "別ウインドウで編集中です。パネルに戻すには、作成ウインドウの「パネルに戻す」を押してください。"),
+      focusBtn
+    );
+    let locked = false;
+    // 添付・書式の注記（下書きフォルダーの下書きに添付や書式があるとき）
+    const infoLine = el("div", "info");
+    infoLine.hidden = true;
+
+    main.append(lockBar, notice, infoLine, fields, textarea, foot, pop);
     fillRecipients();
 
     const grip = el("div", "grip");
@@ -473,7 +609,29 @@
       updateSummary();
       main.inert = !open; // 折りたたみ中は入力欄へフォーカスを入れない
       if (!open) closePop();
-      badge.hidden = open || !userText().trim();
+      const pending = !!(settings.folderSave && link && link.pending) && !locked;
+      badge.textContent = locked ? "別ウインドウで編集中" : pending ? "下書きの確認" : "下書きあり";
+      badge.hidden = open || !(locked || pending || userText().trim());
+      notice.hidden = !pending;
+      lockBar.hidden = !locked;
+      const notes = [];
+      if (settings.folderSave && link && link.attachments) {
+        notes.push(`添付 ${link.attachments} 件（追加・削除は別ウインドウで）`);
+      }
+      if (settings.folderSave && link && link.formatted) {
+        notes.push("書式付きの下書きです。パネルで編集すると書式は外れます");
+      }
+      infoLine.textContent = notes.join("　／　");
+      infoLine.hidden = !notes.length;
+    }
+
+    // 自分の文の終わり。作成ウインドウや下書きから戻した文は引用ごと入っているので、
+    // 引用の見出し行（「… wrote:」）か最初の「>」の行の手前を探す
+    function ownTextEnd() {
+      if (!quoteLocked) return userText().replace(/\s+$/, "").length;
+      const value = textarea.value;
+      const m = /\n*^(?:.*(?:wrote|書きました)[:：][ \t]*|>.*)$/m.exec(value);
+      return m ? m.index : value.replace(/\s+$/, "").length;
     }
 
     function setOpen(next) {
@@ -481,11 +639,16 @@
       open = next;
       render();
       if (open) {
-        // カーソルは自分の文の末尾（引用の手前）に置く
-        const at = userText().length;
+        // カーソルは自分の文の末尾（引用の手前）に置き、入力欄は先頭から見せる
+        const at = ownTextEnd();
         textarea.focus();
         textarea.setSelectionRange(at, at);
-      } else flushDraft();
+        textarea.scrollTop = 0;
+        // 開くアニメーションの後にも先頭へ戻す（高さが変わる途中でカーソル位置へ流れるため）
+        setTimeout(() => {
+          textarea.scrollTop = 0;
+        }, 250);
+      } else flushDraft().then(requestFolderSave);
       // アニメーション無効の環境では transitionend が来ないので、時間でも余白を更新する
       setTimeout(setPadding, 250);
     }
@@ -508,27 +671,46 @@
     }
 
     // ---- 下書き ----
+    // 送信時に付ける引用（入力欄に引用が入っていれば null）
+    function quoteFor(quoteInEditor) {
+      return settings.includeOriginal && !quoteInEditor && originalText
+        ? { header: quoteHeader, body: originalText, mark: settings.quoteMark }
+        : null;
+    }
+
     async function saveDraft() {
       saveTimer = null;
       try {
         // 自動で入れた引用だけなら下書きではない
         if (!userText().trim()) {
-          await api.storage.local.remove(draftKey);
+          if (settings.folderSave && link && link.draftId) {
+            // 下書きフォルダーに紐づく下書きがあるときは「空にした」印を残し、次の保存でそちらも片付ける
+            await api.storage.local.set({
+              [draftKey]: { text: "", empty: true, headerMessageId: info.headerMessageId, origId: info.id, savedAt: Date.now() },
+            });
+          } else {
+            await api.storage.local.remove(draftKey);
+          }
           return;
         }
+        const quoteInEditor = !!autoTail || quoteLocked;
         await api.storage.local.set({
           [draftKey]: {
             text: textarea.value,
             // 入力欄に引用が含まれているか（復元時に二重に入れないため）
-            hasQuote: !!autoTail || quoteLocked,
+            hasQuote: quoteInEditor,
+            // 下書きフォルダーへ保存するとき、背景スクリプトが付ける引用
+            quote: quoteFor(quoteInEditor),
             replyAll: allCheck.checked,
             to: toInput.value,
             cc: ccInput.value,
             bcc: bccInput.value,
+            bccShown: settings.showBcc,
             identityId: fromSelect.value,
             subject: subjectInput.value,
-            // メールIDは再起動で別のメールを指しうるので、照合用に Message-ID を一緒に持つ
+            // 照合用の Message-ID と、元メールを引くためのメールID
             headerMessageId: info.headerMessageId,
+            origId: info.id,
             savedAt: Date.now(),
           },
         });
@@ -542,10 +724,18 @@
       saveTimer = setTimeout(saveDraft, SAVE_DELAY);
     }
 
-    function flushDraft() {
+    async function flushDraft() {
       if (saveTimer === null) return;
       clearTimeout(saveTimer);
-      saveDraft();
+      await saveDraft();
+    }
+
+    // 畳んだとき：保存のタイミングが「メールを移る・畳むとき」なら下書きフォルダーへ反映を頼む
+    function requestFolderSave() {
+      if (!settings.folderSave || settings.saveTiming !== "leave") return;
+      api.runtime.sendMessage({ type: "flush", suffix }).catch((e) => {
+        console.warn(LOG, "下書きフォルダーへの保存を頼めなかった", e);
+      });
     }
 
     async function removeDraft() {
@@ -558,23 +748,24 @@
       }
     }
 
-    // force＝作成ウインドウから戻された内容で、入力中の文を置き換える
+    // force＝作成ウインドウや下書きフォルダーから来た内容で、入力中の文を置き換える
     async function restoreDraft(force) {
       try {
         const stored = await api.storage.local.get(draftKey);
         const draft = stored ? stored[draftKey] : null;
-        if (!draft || typeof draft.text !== "string") return;
+        if (!draft || typeof draft.text !== "string" || draft.empty) return null;
         if (force) {
           textarea.value = "";
+          autoTail = "";
           quoteLocked = false;
         }
         // 別のメールの下書きが同じIDに残っていたら使わない（誤送信防止）
         if ((draft.headerMessageId || "") !== (info.headerMessageId || "")) {
           await api.storage.local.remove(draftKey);
-          return;
+          return null;
         }
         // 読み込み中に入力が始まっていたら上書きしない
-        if (userText()) return;
+        if (userText()) return null;
         textarea.value = draft.text;
         autoTail = "";
         if (draft.hasQuote) {
@@ -593,37 +784,56 @@
         if (fromInfo.options.some((o) => o.id === draft.identityId)) fromSelect.value = draft.identityId;
         if (typeof draft.subject === "string" && draft.subject.trim()) subjectInput.value = draft.subject;
         updateSummary();
+        return draft;
       } catch (e) {
         console.warn(LOG, "下書きを読めなかった", e);
+        return null;
       }
+    }
+
+    // 作成ウインドウの「パネルに戻す」直後か（その印は時刻。古い印では開かない）
+    function justReturned(draft) {
+      return !!draft && typeof draft.fromWindow === "number" && Date.now() - draft.fromWindow < 15000;
+    }
+
+    // 作成ウインドウから戻った内容を、展開したパネルで見せる
+    function showReturned() {
+      syncEditorQuote();
+      if (!fields.hidden || toInput.value !== (allCheck.checked ? defaults.all : defaults.sender).to.join(", ")) {
+        fields.hidden = false; // 宛先が初期値と違うなら、見えるように編集欄を開く
+      }
+      setOpen(true);
+      render();
     }
 
     // ---- 送信 ----
     function setBusy(next) {
       busy = next;
-      sendBtn.disabled = next;
-      discardBtn.disabled = next;
-      popBtn.disabled = next;
-      allCheck.disabled = next;
-      textarea.readOnly = next;
-      toInput.readOnly = ccInput.readOnly = bccInput.readOnly = subjectInput.readOnly = next;
-      fromSelect.disabled = next;
+      syncControls();
       sendBtn.textContent = next ? "送信中…" : "送信";
     }
 
+    // 処理中、または作成ウインドウで編集中（locked）の間は、入力と操作を止める
+    function syncControls() {
+      const stop = busy || locked;
+      sendBtn.disabled = discardBtn.disabled = popBtn.disabled = gear.disabled = stop;
+      replaceBtn.disabled = keepBtn.disabled = stop;
+      allCheck.disabled = stop;
+      textarea.readOnly = stop;
+      toInput.readOnly = ccInput.readOnly = bccInput.readOnly = subjectInput.readOnly = stop;
+      fromSelect.disabled = stop;
+      if (stop) closePop();
+    }
+
     async function send() {
-      if (busy) return;
+      if (busy || locked) return;
       const text = textarea.value;
       if (!userText().trim()) {
         setStatus("本文を入力してください", true);
         return;
       }
       // 入力欄に引用が入っていれば、それがそのまま送られる。入っていなければ送信時に付ける
-      const quoteInEditor = !!autoTail || quoteLocked;
-      const quote =
-        settings.includeOriginal && !quoteInEditor && originalText
-          ? { header: quoteHeader, body: originalText, mark: settings.quoteMark }
-          : null;
+      const quote = quoteFor(!!autoTail || quoteLocked);
       if (!toInput.value.trim()) {
         fields.hidden = false;
         render();
@@ -638,6 +848,7 @@
         result = await api.runtime.sendMessage({
           type: "send",
           messageId: info.id,
+          suffix,
           text,
           quote,
           replyAll: allCheck.checked,
@@ -685,21 +896,19 @@
 
     // 書きかけの内容を標準の作成ウインドウへ引き継ぐ（添付や書式を使いたいとき）
     async function popout() {
-      if (busy) return;
+      if (busy || locked) return;
+      await flushDraft(); // 作成ウインドウを閉じて戻ったとき、この時点の内容から続けられるように
       setBusy(true);
       sendBtn.textContent = "送信"; // 送信ではないので「送信中…」にしない
       setStatus("別ウインドウで開いています…");
-      const quoteInEditor = !!autoTail || quoteLocked;
       let result = null;
       try {
         result = await api.runtime.sendMessage({
           type: "popout",
           messageId: info.id,
+          suffix,
           text: textarea.value,
-          quote:
-            settings.includeOriginal && !quoteInEditor && originalText
-              ? { header: quoteHeader, body: originalText, mark: settings.quoteMark }
-              : null,
+          quote: quoteFor(!!autoTail || quoteLocked),
           replyAll: allCheck.checked,
           to: toInput.value,
           cc: ccInput.value,
@@ -712,10 +921,7 @@
       }
       setBusy(false);
       if (result && result.ok) {
-        // 続きは作成ウインドウ側で書く。二重に残さないようパネル側は空にする
-        clearText();
-        resetFields();
-        await removeDraft();
+        // 続きは作成ウインドウ側で書く。パネルは内容を残したまま「別ウインドウで編集中」としてロックされる
         setStatus("");
         setOpen(false);
         render();
@@ -732,14 +938,40 @@
       syncEditorQuote();
     }
 
+    // 破棄：パネルを空にし、下書きフォルダーの下書きもごみ箱へ移す
     async function discard() {
-      if (busy) return;
+      if (busy || locked) return;
       clearText();
       resetFields();
       await removeDraft();
+      try {
+        await api.runtime.sendMessage({ type: "discardDraft", suffix });
+      } catch (e) {
+        console.warn(LOG, "下書きフォルダーの下書きを片付けられなかった", e);
+      }
       setStatus("");
       setOpen(false);
       render();
+    }
+
+    // 別の下書きへの差し替え確認の操作
+    async function answerPending(type) {
+      if (busy || locked) return;
+      await flushDraft();
+      setBusy(true);
+      sendBtn.textContent = "送信"; // 送信ではないので「送信中…」にしない
+      replaceBtn.disabled = keepBtn.disabled = true;
+      if (type === "replaceDraft") setStatus("差し替えています…");
+      let result = null;
+      try {
+        result = await api.runtime.sendMessage({ type, suffix });
+      } catch (e) {
+        result = { ok: false, error: (e && e.message) || String(e) };
+      }
+      setBusy(false);
+      replaceBtn.disabled = keepBtn.disabled = false;
+      if (result && result.ok) setStatus("");
+      else setStatus(`差し替えられませんでした：${(result && result.error) || "不明なエラー"}`, true);
     }
 
     // ---- 操作 ----
@@ -782,19 +1014,54 @@
     sendBtn.addEventListener("click", send);
     discardBtn.addEventListener("click", discard);
     popBtn.addEventListener("click", popout);
+    replaceBtn.addEventListener("click", () => answerPending("replaceDraft"));
+    keepBtn.addEventListener("click", () => answerPending("keepDraft"));
+    focusBtn.addEventListener("click", () => {
+      api.runtime.sendMessage({ type: "focusCompose", suffix }).catch((e) => {
+        console.warn(LOG, "作成ウインドウを表示できなかった", e);
+      });
+    });
 
-    // 作成ウインドウの「パネルに戻す」で下書きが書き込まれたら、その内容で開く
-    api.storage.onChanged.addListener(async (changes, area) => {
-      const change = area === "local" ? changes[draftKey] : null;
-      if (!change || !change.newValue || !change.newValue.fromWindow) return;
-      await restoreDraft(true);
-      syncEditorQuote();
-      if (!fields.hidden || toInput.value !== (allCheck.checked ? defaults.all : defaults.sender).to.join(", ")) {
-        fields.hidden = false; // 宛先が初期値と違うなら、見えるように編集欄を開く
-      }
-      setOpen(true);
+    // 作成ウインドウとの対応表に、このメールの下書きを編集中のウインドウがあるか
+    function applyLock(links) {
+      const next = Object.values(links || {}).includes(suffix);
+      if (next === locked) return;
+      locked = next;
+      syncControls();
       render();
-      scheduleSave(); // fromWindow の印を外して保存し直す
+    }
+
+    // 背景スクリプトからの変化を反映する
+    api.storage.onChanged.addListener(async (changes, area) => {
+      if (area !== "local") return;
+      if (changes.composeLinks) applyLock(changes.composeLinks.newValue);
+      if (changes[linkKey]) {
+        link = changes[linkKey].newValue || null;
+        render();
+      }
+      const change = changes[draftKey];
+      if (!change) return;
+      const next = change.newValue;
+      if (!next) {
+        // 外で下書きが消えた（下書きフォルダーから削除・作成ウインドウから送信）。
+        // パネルが保存したときのままなら空にする（入力が進んでいれば触らない）
+        const prev = change.oldValue;
+        if (!busy && prev && !prev.empty && saveTimer === null && textarea.value === prev.text) {
+          clearText();
+          resetFields();
+          render();
+        }
+        return;
+      }
+      // 作成ウインドウから戻された内容・下書きフォルダーから読み直した内容で置き換える
+      const returned = justReturned(next);
+      if (!returned && !next.external) return;
+      await restoreDraft(true);
+      if (returned) showReturned();
+      else {
+        syncEditorQuote();
+        render();
+      }
     });
 
     // 上端のつまみ：ドラッグで高さを変える。下限 220px、上限は表示エリアの高さ − 8px
@@ -876,11 +1143,21 @@
     } catch (e) {
       console.warn(LOG, "設定を読めなかった（初期値で続行）", e);
     }
+    try {
+      const stored = await api.storage.local.get([linkKey, "composeLinks"]);
+      link = (stored && stored[linkKey]) || null;
+      applyLock(stored && stored.composeLinks);
+    } catch (e) {
+      console.warn(LOG, "下書きの紐付けを読めなかった", e);
+    }
     renderSettings();
     applyHeight();
-    await restoreDraft();
-    syncEditorQuote();
-    render();
+    const draft = await restoreDraft();
+    if (justReturned(draft)) showReturned();
+    else {
+      syncEditorQuote();
+      render();
+    }
   }
 
   init().catch((e) => console.error(LOG, "パネルの初期化に失敗", e));
